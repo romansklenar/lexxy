@@ -7,9 +7,20 @@ export class EditorHandle {
     this.content = this.locator.locator(".lexxy-editor__content")
   }
 
+  // The element turns [connected] as soon as connectedCallback runs, but it
+  // mounts Lexical onto its content element on the next animation frame. Until
+  // then the editor ignores input and its DOM is still being rebuilt, so wait
+  // for the mount too.
   async waitForConnected() {
     await this.locator.waitFor({ state: "attached" })
     await this.page.waitForSelector(`${this.selector}[connected]`)
+
+    const element = await this.locator.elementHandle()
+    await this.page.waitForFunction((el) => {
+      const root = el.editor?.getRootElement()
+      return root != null && root === el.editorContentElement
+    }, element)
+    await element.dispose()
   }
 
   async value() {
@@ -173,6 +184,7 @@ export class EditorHandle {
       },
       { text, html, files, uriList },
     )
+    await this.flush()
   }
 
   async sendTab({ shift = false } = {}) {
@@ -267,6 +279,8 @@ export class EditorHandle {
       )
       if (!isActive) {
         await this.content.click()
+        // Let Lexical pick up the selection the click placed before acting on it.
+        await this.flush()
       }
       this.#firstInteraction = true
     }
